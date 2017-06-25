@@ -8,6 +8,9 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/gorhill/cronexpr"
 )
 
@@ -86,6 +89,8 @@ func main() {
 	var async string
 	var prevTick time.Time
 	var timezone string
+	var cluster string
+	var region string
 	var filePath string
 	var simulate bool
 	var verbosity int
@@ -93,6 +98,8 @@ func main() {
 
 	flag.StringVar(&timezone, "timezone", "UTC", "The TimeZone in which to evaluate cron expressions")
 	flag.StringVar(&async, "async", "", "The \"last run\" of cron (to resume after interruption) in YYYY-MM-DD HH:mm:ss format")
+	flag.StringVar(&cluster, "cluster", "", "The ECS Cluster on which to run tasks")
+	flag.StringVar(&region, "region", "", "The AWS Region in which the ECS Cluster resides")
 	flag.StringVar(&filePath, "crontab", "/etc/ecscrontab", "The location of the crontab file to parse")
 	flag.BoolVar(&simulate, "simulate", false, "When true, don't actually run anything, only print what would be run")
 	flag.IntVar(&verbosity, "debug", 0, "Debug level 0 = errors/warnings, 1 = run info, 2 = status")
@@ -132,6 +139,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	awsConfig := aws.NewConfig()
+	if region != "" {
+		awsConfig = awsConfig.WithRegion(region)
+	}
+
+	awsSession := session.Must(session.NewSession(awsConfig))
+	ecsService := ecs.New(awsSession)
 	for {
 		tick := time.Now().In(location)
 		tickBase := time.Date(tick.Year(), tick.Month(), tick.Day(), tick.Hour(), tick.Minute(), 0, 0, location)
@@ -156,6 +170,41 @@ func main() {
 				}
 				if simulate {
 					continue
+				}
+
+				listInput := &ecs.ListTasksInput{}
+				if cluster != "" {
+					listInput.SetCluster(cluster)
+				}
+				listInput.SetStartedBy(task)
+				listInput.SetMaxResults(1)
+				listResult, err := ecsService.ListTasks(listInput)
+				if err != nil {
+					log.Printf("Failed to ListTasks looking for '%s' on cluster '%s': %s", task, cluster, err)
+					continue
+				}
+
+				if len(listResult.TaskArns) > 0 {
+					log.Printf("Skipping Task '%s', which is still running on cluster '%s'", task, cluster)
+					continue
+				}
+
+				runInput := &ecs.RunTaskInput{}
+				if cluster != "" {
+					runInput.SetCluster(cluster)
+				}
+				runInput.SetStartedBy(task)
+				runInput.SetTaskDefinition(task)
+				runResult, err := ecsService.RunTask(runInput)
+				if err != nil {
+					log.Printf("Failed to RunTask '%s' on cluster '%s': %s", task, cluster, err)
+					continue
+				}
+
+				if len(runResult.Failures) > 0 {
+					for _, failure := range runResult.Failures {
+						log.Printf("Failure during RunTask '%s' on cluster '%s': %s", task, cluster, failure.GoString())
+					}
 				}
 			}
 		}
