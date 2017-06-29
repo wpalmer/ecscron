@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"regexp"
@@ -90,6 +91,8 @@ func main() {
 	var prevTick time.Time
 	var timezone string
 	var cluster string
+	var prefix string
+	var suffix string
 	var region string
 	var filePath string
 	var simulate bool
@@ -101,6 +104,8 @@ func main() {
 	flag.StringVar(&cluster, "cluster", "", "The ECS Cluster on which to run tasks")
 	flag.StringVar(&region, "region", "", "The AWS Region in which the ECS Cluster resides")
 	flag.StringVar(&filePath, "crontab", "/etc/ecscrontab", "The location of the crontab file to parse")
+	flag.StringVar(&prefix, "prefix", "", "An optional prefix to add to all ECS Task names within the crontab")
+	flag.StringVar(&suffix, "suffix", "", "An optional suffix to add to all ECS Task names within the crontab")
 	flag.BoolVar(&simulate, "simulate", false, "When true, don't actually run anything, only print what would be run")
 	flag.IntVar(&verbosity, "debug", 0, "Debug level 0 = errors/warnings, 1 = run info, 2 = status")
 	flag.Parse()
@@ -131,6 +136,8 @@ func main() {
 		if !ok {
 			continue
 		}
+
+		task = fmt.Sprintf("%s%s%s", prefix, task, suffix)
 
 		crontab[task] = append(crontab[task], expr)
 	}
