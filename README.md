@@ -77,6 +77,10 @@ Arguments:
    without editing the crontab.
  * `-region <AWS Region Identifier>`
    The AWS Region in which the ECS Cluster resides.
+ * `-retry`
+   When true, any failed run-task will be attempted again in the next iteration (same as -retry-count=-1)
+ * `-retry-count <number>`
+   The number of times to retry a failed run-task before giving up (-1 means forever)
  * `-simulate <true|false>`
    When true, don't actually run anything, only print what would be run.
  * `-suffix <string>`

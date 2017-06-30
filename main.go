@@ -15,11 +15,6 @@ import (
 	"github.com/gorhill/cronexpr"
 )
 
-type CronTabEntry struct {
-	lastRun     time.Time
-	expressions []*cronexpr.Expression
-}
-
 const (
 	DEBUG_ERROR  = 0
 	DEBUG_INFO   = 1
@@ -27,7 +22,12 @@ const (
 	DEBUG_STATUS = 5
 )
 
-type CronTab map[string][]*cronexpr.Expression
+type CronTabEntry struct {
+	FailuresSinceLastSuccess int64
+	Schedule []*cronexpr.Expression
+}
+
+type CronTab map[string]*CronTabEntry
 
 var cronExprMatcher *regexp.Regexp
 var ignoredMatcher *regexp.Regexp
@@ -96,12 +96,16 @@ func main() {
 	var suffix string
 	var region string
 	var filePath string
+	var retry bool
+	var retryCount int64
 	var simulate bool
 	var verbosity int
 	first := true
 
 	flag.StringVar(&timezone, "timezone", "UTC", "The TimeZone in which to evaluate cron expressions")
 	flag.StringVar(&async, "async", "", "The \"last run\" of cron (to resume after interruption) in YYYY-MM-DD HH:mm:ss format")
+	flag.BoolVar(&retry, "retry", false, "When true, any failed run-task will be attempted again in the next iteration (same as -retry-count=-1)")
+	flag.Int64Var(&retryCount, "retry-count", 0, "The number of times to retry a failed run-task before giving up (-1 means forever)")
 	flag.StringVar(&cluster, "cluster", "", "The ECS Cluster on which to run tasks")
 	flag.StringVar(&region, "region", "", "The AWS Region in which the ECS Cluster resides")
 	flag.StringVar(&filePath, "crontab", "/etc/ecscrontab", "The location of the crontab file to parse")
@@ -125,6 +129,14 @@ func main() {
 		first = false
 	}
 
+	if retry && retryCount == int64(0) {
+		retryCount = -1
+	}
+
+	if retryCount != int64(0) {
+		retry = true
+	}
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		log.Fatal(err)
@@ -140,7 +152,10 @@ func main() {
 
 		task = fmt.Sprintf("%s%s%s", prefix, task, suffix)
 
-		crontab[task] = append(crontab[task], expr)
+		if _, ok := crontab[task]; !ok {
+			crontab[task] = new(CronTabEntry)
+		}
+		crontab[task].Schedule = append(crontab[task].Schedule, expr)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -162,10 +177,40 @@ func main() {
 		if !first {
 			for task := range crontab {
 				doRun := false
-				for _, expr := range crontab[task] {
-					if exprNext := expr.Next(prevTick); exprNext.Before(tick) || exprNext.Equal(tick) {
+				var exprNext time.Time
+
+				if crontab[task].FailuresSinceLastSuccess > int64(0) && retry {
+					if retryCount > 0 {
+						if crontab[task].FailuresSinceLastSuccess <= retryCount {
+							log.Printf("Retrying %s (this is attempt %d/%d)",
+								task, crontab[task].FailuresSinceLastSuccess + int64(1), retryCount + int64(1))
+							doRun = true
+						} else {
+							// Task has completely failed to run. Reset the counter so it can run at the next scheduled time.
+							crontab[task].FailuresSinceLastSuccess = 0
+						}
+					} else {
+						log.Printf("Retrying %s (this is attempt %d)", task, crontab[task].FailuresSinceLastSuccess + int64(1))
 						doRun = true
-						break
+					}
+				}
+
+				// if doRun has not been set by retry rules, check the schedule
+				if !doRun {
+					if verbosity >= DEBUG_STATUS {
+						log.Printf("Checking schedule for %s", task)
+					}
+
+					for i, expr := range crontab[task].Schedule {
+						exprNext = expr.Next(prevTick)
+						if verbosity >= DEBUG_STATUS {
+							log.Printf("Next run of %s should be at %s (vs now: %s) according to rule %d", task, exprNext, tick, i)
+						}
+
+						if exprNext.Before(tick) || exprNext.Equal(tick) {
+							doRun = true
+							break
+						}
 					}
 				}
 
@@ -173,8 +218,11 @@ func main() {
 					continue
 				}
 
+				// Default to assuming failure. In the event of success, this will be overridden below
+				crontab[task].FailuresSinceLastSuccess += 1
+
 				if simulate || verbosity >= DEBUG_INFO {
-					log.Printf("Running: %s\n", task)
+					log.Printf("Running: %s", task)
 				}
 				if simulate {
 					continue
@@ -213,12 +261,17 @@ func main() {
 					for _, failure := range runResult.Failures {
 						log.Printf("Failure during RunTask '%s' on cluster '%s': %s", task, cluster, failure.GoString())
 					}
-				} else if verbosity >= DEBUG_DETAIL {
+					continue
+				}
+
+				if verbosity >= DEBUG_DETAIL {
 					for _, scheduledTask := range runResult.Tasks {
 						log.Printf("%s Scheduled to run on Container Instance %s using Task Definition %s\n",
 							task, *scheduledTask.ContainerInstanceArn, *scheduledTask.TaskDefinitionArn)
 					}
 				}
+
+				crontab[task].FailuresSinceLastSuccess = 0
 			}
 		}
 
