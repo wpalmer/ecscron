@@ -46,9 +46,10 @@ Basic Usage:
 Via Docker:
 
     docker run \
+      --rm \
       -v "$HOME/.aws:/root/.aws" \
       -e "HOME=root" \
-      -v "$PWD/my-crontab-file:/etc/ecscrontab"
+      -v "$PWD/my-crontab-file:/etc/ecscrontab" \
       wpalmer/ecscron \
       -cluster my-cluster \
       -region eu-west-1
