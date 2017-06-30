@@ -23,7 +23,8 @@ type CronTabEntry struct {
 const (
 	DEBUG_ERROR  = 0
 	DEBUG_INFO   = 1
-	DEBUG_STATUS = 2
+	DEBUG_DETAIL = 2
+	DEBUG_STATUS = 5
 )
 
 type CronTab map[string][]*cronexpr.Expression
@@ -107,7 +108,7 @@ func main() {
 	flag.StringVar(&prefix, "prefix", "", "An optional prefix to add to all ECS Task names within the crontab")
 	flag.StringVar(&suffix, "suffix", "", "An optional suffix to add to all ECS Task names within the crontab")
 	flag.BoolVar(&simulate, "simulate", false, "When true, don't actually run anything, only print what would be run")
-	flag.IntVar(&verbosity, "debug", 0, "Debug level 0 = errors/warnings, 1 = run info, 2 = status")
+	flag.IntVar(&verbosity, "debug", 0, "Debug level 0 = errors/warnings, 1 = run info, 2 = detail, 5 = status")
 	flag.Parse()
 
 	location, err := time.LoadLocation(timezone)
@@ -211,6 +212,11 @@ func main() {
 				if len(runResult.Failures) > 0 {
 					for _, failure := range runResult.Failures {
 						log.Printf("Failure during RunTask '%s' on cluster '%s': %s", task, cluster, failure.GoString())
+					}
+				} else if verbosity >= DEBUG_DETAIL {
+					for _, scheduledTask := range runResult.Tasks {
+						log.Printf("%s Scheduled to run on Container Instance %s using Task Definition %s\n",
+							task, *scheduledTask.ContainerInstanceArn, *scheduledTask.TaskDefinitionArn)
 					}
 				}
 			}
