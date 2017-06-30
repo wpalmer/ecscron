@@ -24,7 +24,7 @@ const (
 
 type CronTabEntry struct {
 	FailuresSinceLastSuccess int64
-	Schedule []*cronexpr.Expression
+	Schedule                 []*cronexpr.Expression
 }
 
 type CronTab map[string]*CronTabEntry
@@ -183,14 +183,14 @@ func main() {
 					if retryCount > 0 {
 						if crontab[task].FailuresSinceLastSuccess <= retryCount {
 							log.Printf("Retrying %s (this is attempt %d/%d)",
-								task, crontab[task].FailuresSinceLastSuccess + int64(1), retryCount + int64(1))
+								task, crontab[task].FailuresSinceLastSuccess+int64(1), retryCount+int64(1))
 							doRun = true
 						} else {
 							// Task has completely failed to run. Reset the counter so it can run at the next scheduled time.
 							crontab[task].FailuresSinceLastSuccess = 0
 						}
 					} else {
-						log.Printf("Retrying %s (this is attempt %d)", task, crontab[task].FailuresSinceLastSuccess + int64(1))
+						log.Printf("Retrying %s (this is attempt %d)", task, crontab[task].FailuresSinceLastSuccess+int64(1))
 						doRun = true
 					}
 				}
