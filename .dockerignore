@@ -1,0 +1,5 @@
+ecscron
+*.test
+.*
+Dockerfile
+README.md
