@@ -32,6 +32,7 @@ Leading/trailing whitespace, as well as anything after a `#`, is ignored.
 
 Example, running the "HelloWorld" task once every five minutes, between
 the hours of 9am and 6pm, Monday through Friday:
+
     # minute  hour    day-of-month  month   day-of-week task
       */5     9-17    *             *       1-5         HelloWorld
 
