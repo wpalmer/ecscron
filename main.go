@@ -25,6 +25,10 @@ const (
 	DEBUG_STATUS = 5
 )
 
+type simulatedStatus struct {
+	TaskName string
+}
+
 func main() {
 	var async string
 	var prevTick time.Time
@@ -96,8 +100,8 @@ func main() {
 	var runner taskrunner.TaskRunner
 	if simulate {
 		runner = taskrunner.TaskRunnerFunc(func(task string) (*taskrunner.TaskStatus, error) {
-			log.Printf("Running: %s", task)
-			return &taskrunner.TaskStatus{Ran: true}, nil
+			log.Printf("[-simulate] Running: %s", task)
+			return &taskrunner.TaskStatus{Ran: true, Output: &simulatedStatus{TaskName: task}}, nil
 		})
 	} else {
 		awsConfig := aws.NewConfig()
@@ -146,6 +150,8 @@ func main() {
 					switch output := result.Output.(type) {
 					default:
 						log.Printf("%s Scheduled to Run via an unknown method", task)
+					case *simulatedStatus:
+						log.Printf("[-simulate] %s Would have been scheduled to run as %s", task, output.TaskName)
 					case *ecs.RunTaskOutput:
 						for _, scheduledTask := range output.Tasks {
 							log.Printf("%s Scheduled to run on Container Instance %s using Task Definition %s\n",
