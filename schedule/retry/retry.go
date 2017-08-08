@@ -20,6 +20,12 @@ type RetrySchedule struct {
 	tasks      map[string]*retryTaskStatus
 }
 
+type RetryInfo struct {
+	Attempt    int64
+	MaxRetries int64
+	Output     interface{}
+}
+
 func NewRetrySchedule(schedule schedule.Schedule, numRetries int64) *RetrySchedule {
 	return &RetrySchedule{
 		schedule:   schedule,
@@ -52,6 +58,11 @@ func (r *RetrySchedule) Tick(runner taskrunner.TaskRunner, at time.Time) (map[st
 			r.tasks[task].attempts += 1
 
 			newstatus, err := runner.RunTask(task)
+			newstatus.Info = &RetryInfo{
+				Attempt:    r.tasks[task].attempts,
+				MaxRetries: r.maxRetries,
+			}
+
 			if err != nil {
 				return nil, err
 			}

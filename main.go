@@ -145,6 +145,19 @@ func main() {
 		}
 
 		for task, result := range results {
+			if verbosity >= DEBUG_DETAIL {
+				switch info := result.Info.(type) {
+				default:
+				case *retry.RetryInfo:
+					if info.MaxRetries > 0 {
+						log.Printf("Retrying %s (attempt %d of %d)\n",
+							task, info.Attempt, info.MaxRetries)
+					} else {
+						log.Printf("Retrying %s (attempt %d)\n", task, info.Attempt)
+					}
+				}
+			}
+
 			if result.Ran {
 				if verbosity >= DEBUG_DETAIL {
 					switch output := result.Output.(type) {

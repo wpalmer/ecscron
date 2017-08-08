@@ -13,7 +13,9 @@ type TaskStatus struct {
 	// Possibly temporary, known errors (eg: failure to place task, task is still running)
 	// These errors should probably result in the scheduler arranging for the task to try again
 	Warnings []error
-	Output   interface{}
+
+	Info   interface{}
+	Output interface{}
 }
 
 type TaskRunnerFunc func(task string) (*TaskStatus, error)
