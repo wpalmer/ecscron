@@ -41,7 +41,12 @@ func TestEcsTaskRunner(t *testing.T) {
 
 	t.Run("Already-running tasks should not re-run", func(t *testing.T) {
 		service := ecstest{
-			func(*ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
+			func(i *ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
+				startedBy := *i.StartedBy
+				if startedBy != "c48ff9aade4a76b8a3ea9767be30800b" {
+					t.Fatalf("StartedBy was not md5sum of 'taskname' (%s)", startedBy)
+				}
+
 				taskArn := "arn:test"
 				return &ecs.ListTasksOutput{
 					NextToken: nil,
@@ -146,7 +151,12 @@ func TestEcsTaskRunner(t *testing.T) {
 					TaskArns:  []*string{},
 				}, nil
 			},
-			func(*ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
+			func(i *ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
+				startedBy := *i.StartedBy
+				if startedBy != "c48ff9aade4a76b8a3ea9767be30800b" {
+					t.Fatalf("StartedBy was not md5sum of 'taskname' (%s)", startedBy)
+				}
+
 				return &ecs.RunTaskOutput{
 					Failures: []*ecs.Failure{},
 					Tasks:    []*ecs.Task{},

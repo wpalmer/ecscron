@@ -1,6 +1,7 @@
 package ecstaskrunner
 
 import (
+	"crypto/md5"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/service/ecs"
@@ -27,7 +28,8 @@ func (r *EcsTaskRunner) RunTask(task string) (*taskrunner.TaskStatus, error) {
 		listInput.SetCluster(r.cluster)
 	}
 
-	listInput.SetStartedBy(task)
+	startedBy := fmt.Sprintf("%x", md5.Sum([]byte(task)))
+	listInput.SetStartedBy(startedBy)
 	listInput.SetMaxResults(1)
 	listResult, err := r.service.ListTasks(listInput)
 	if err != nil {
@@ -52,7 +54,7 @@ func (r *EcsTaskRunner) RunTask(task string) (*taskrunner.TaskStatus, error) {
 	if r.cluster != "" {
 		runInput.SetCluster(r.cluster)
 	}
-	runInput.SetStartedBy(task)
+	runInput.SetStartedBy(startedBy)
 	runInput.SetTaskDefinition(task)
 	runResult, err := r.service.RunTask(runInput)
 	if err != nil {
