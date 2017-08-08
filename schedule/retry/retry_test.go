@@ -102,9 +102,15 @@ func TestRetrySchedule(t *testing.T) {
 				Output:   "testOutputSuccess",
 			}, nil
 		})
-		_, _ = outerSchedule.Tick(trackRunner, testAfter)
+		results, _ := outerSchedule.Tick(trackRunner, testAfter)
 		if !didRun {
 			t.Fatalf("Ticking after a failure did not result in a retry")
+		}
+
+		for _, oneResult := range results {
+			if _, ok := oneResult.Info.(*RetryInfo); !ok {
+				t.Fatalf("Result of a Retry did not include RetryInfo")
+			}
 		}
 
 		didRun = false

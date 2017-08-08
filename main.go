@@ -147,6 +147,18 @@ func main() {
 		for task, result := range results {
 			if result.Ran {
 				if verbosity >= DEBUG_DETAIL {
+
+					switch info := result.Info.(type) {
+					default:
+					case *retry.RetryInfo:
+						if info.MaxRetries > 0 {
+							log.Printf("Retrying %s (attempt %d of %d)\n",
+								task, info.Attempt, info.MaxRetries)
+						} else {
+							log.Printf("Retrying %s (attempt %d)\n", task, info.Attempt)
+						}
+					}
+
 					switch output := result.Output.(type) {
 					default:
 						log.Printf("%s Scheduled to Run via an unknown method", task)
