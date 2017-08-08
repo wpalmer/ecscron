@@ -3,6 +3,7 @@ package ecstaskrunner
 import (
 	"crypto/md5"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/wpalmer/ecscron/taskrunner"
@@ -71,7 +72,7 @@ func (r *EcsTaskRunner) RunTask(task string) (*taskrunner.TaskStatus, error) {
 		for _, failure := range runResult.Failures {
 			warnings = append(warnings,
 				fmt.Errorf("Failure during RunTask '%s' on cluster '%s': %s",
-					task, r.cluster, failure.GoString()))
+					task, r.cluster, strings.Replace(failure.GoString(), "\n", " ", -1)))
 		}
 		return &taskrunner.TaskStatus{
 			Ran:      false,

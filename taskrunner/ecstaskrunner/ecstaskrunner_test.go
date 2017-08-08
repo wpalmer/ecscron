@@ -2,6 +2,8 @@ package ecstaskrunner
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/service/ecs"
@@ -114,7 +116,7 @@ func TestEcsTaskRunner(t *testing.T) {
 			},
 			func(*ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
 				taskArn := "arn:test"
-				reason := "intentional failure"
+				reason := "intentional\nfailure"
 				return &ecs.RunTaskOutput{
 					Failures: []*ecs.Failure{
 						&ecs.Failure{
@@ -140,6 +142,12 @@ func TestEcsTaskRunner(t *testing.T) {
 
 		if len(result.Warnings) < 1 {
 			t.Fatalf("RunTask Failure did not return a warning")
+		}
+
+		for _, warning := range result.Warnings {
+			if strings.Contains(fmt.Sprintf("%s", warning), "\n") {
+				t.Fatalf("RunTask Failure contained a newline")
+			}
 		}
 	})
 
