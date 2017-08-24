@@ -7,33 +7,38 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go/service/ecs"
+	"github.com/wpalmer/ecscron/taskrunner"
 )
 
-type ecstest struct {
-	list func(*ecs.ListTasksInput) (*ecs.ListTasksOutput, error)
-	run  func(*ecs.RunTaskInput) (*ecs.RunTaskOutput, error)
+type listTasksFunc func(input *ecs.ListTasksInput) (*ecs.ListTasksOutput, error)
+
+func (f listTasksFunc) ListTasks(input *ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
+	return f(input)
 }
 
-func (ecs ecstest) ListTasks(input *ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
-	return ecs.list(input)
-}
-func (ecs ecstest) RunTask(input *ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
-	return ecs.run(input)
+type runTaskFunc func(input *ecs.RunTaskInput) (*ecs.RunTaskOutput, error)
+
+func (f runTaskFunc) RunTask(input *ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
+	return f(input)
 }
 
-func TestEcsTaskRunner(t *testing.T) {
+func TestEcsSkipRunningTaskRunner(t *testing.T) {
 	t.Run("ListTask errors should be returned as errors", func(t *testing.T) {
-		service := ecstest{
-			func(*ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
-				return nil, errors.New("intentional error")
-			},
-			func(*ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
-				t.Fatalf("RunTask was called when listing tasks")
-				return nil, errors.New("never reached")
-			},
-		}
+		service := listTasksFunc(func(*ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
+			return nil, errors.New("intentional error")
+		})
 
-		runner := NewEcsTaskRunner(service, "clustername")
+		innerRunner := taskrunner.TaskRunnerFunc(func(task string) (*taskrunner.TaskStatus, error) {
+			t.Fatalf("inner taskrunner was called when listing tasks")
+			return &taskrunner.TaskStatus{
+				Ran:      false,
+				Error:    nil,
+				Warnings: []error{},
+				Output:   "unexpected",
+			}, nil
+		})
+
+		runner := NewEcsSkipRunningTaskRunner(service, "clustername", innerRunner)
 		_, err := runner.RunTask("taskname")
 
 		if err == nil {
@@ -42,26 +47,29 @@ func TestEcsTaskRunner(t *testing.T) {
 	})
 
 	t.Run("Already-running tasks should not re-run", func(t *testing.T) {
-		service := ecstest{
-			func(i *ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
-				startedBy := *i.StartedBy
-				if startedBy != "c48ff9aade4a76b8a3ea9767be30800b" {
-					t.Fatalf("StartedBy was not md5sum of 'taskname' (%s)", startedBy)
-				}
+		service := listTasksFunc(func(i *ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
+			startedBy := *i.StartedBy
+			if startedBy != "c48ff9aade4a76b8a3ea9767be30800b" {
+				t.Fatalf("StartedBy was not md5sum of 'taskname' (%s)", startedBy)
+			}
 
-				taskArn := "arn:test"
-				return &ecs.ListTasksOutput{
-					NextToken: nil,
-					TaskArns:  []*string{&taskArn},
-				}, nil
-			},
-			func(*ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
-				t.Fatalf("RunTask was called when listing tasks")
-				return nil, errors.New("never reached")
-			},
-		}
+			taskArn := "arn:test"
+			return &ecs.ListTasksOutput{
+				NextToken: nil,
+				TaskArns:  []*string{&taskArn},
+			}, nil
+		})
 
-		runner := NewEcsTaskRunner(service, "clustername")
+		innerRunner := taskrunner.TaskRunnerFunc(func(task string) (*taskrunner.TaskStatus, error) {
+			t.Fatalf("inner taskrunner was called when listing tasks")
+			return &taskrunner.TaskStatus{
+				Ran:      false,
+				Error:    nil,
+				Warnings: []error{},
+				Output:   "unexpected",
+			}, nil
+		})
+		runner := NewEcsSkipRunningTaskRunner(service, "clustername", innerRunner)
 		result, err := runner.RunTask("taskname")
 
 		if err != nil {
@@ -72,23 +80,56 @@ func TestEcsTaskRunner(t *testing.T) {
 			t.Fatalf("Already-running task ran")
 		}
 
+		if !result.Running {
+			t.Fatalf("Already-running task not marked as running")
+		}
+
 		if len(result.Warnings) == 0 {
 			t.Fatalf("No reason given when Already-running task was skipped")
 		}
 	})
 
-	t.Run("RunTask errors should be returned as errors", func(t *testing.T) {
-		service := ecstest{
-			func(*ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
-				return &ecs.ListTasksOutput{
-					NextToken: nil,
-					TaskArns:  []*string{},
-				}, nil
-			},
-			func(*ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
-				return nil, errors.New("intentional error")
-			},
+	t.Run("RunTask without results should call inner runner", func(t *testing.T) {
+		service := listTasksFunc(func(*ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
+			return &ecs.ListTasksOutput{
+				NextToken: nil,
+				TaskArns:  []*string{},
+			}, nil
+		})
+
+		didRun := false
+		innerRunner := taskrunner.TaskRunnerFunc(func(task string) (*taskrunner.TaskStatus, error) {
+			didRun = true
+			return &taskrunner.TaskStatus{
+				Ran:      true,
+				Error:    nil,
+				Warnings: []error{},
+				Output:   "unexpected",
+			}, nil
+		})
+
+		runner := NewEcsSkipRunningTaskRunner(service, "clustername", innerRunner)
+		result, err := runner.RunTask("taskname")
+
+		if !didRun {
+			t.Fatalf("empty ListTasks result did not cause inner runner to run")
 		}
+
+		if err != nil {
+			t.Fatalf("RunTask Success resulted in error")
+		}
+
+		if !result.Ran {
+			t.Fatalf("RunTask Success reported that the task did not run")
+		}
+	})
+}
+
+func TestEcsTaskRunner(t *testing.T) {
+	t.Run("RunTask errors should be returned as errors", func(t *testing.T) {
+		service := runTaskFunc(func(*ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
+			return nil, errors.New("intentional error")
+		})
 
 		runner := NewEcsTaskRunner(service, "clustername")
 		status, err := runner.RunTask("taskname")
@@ -107,27 +148,19 @@ func TestEcsTaskRunner(t *testing.T) {
 	})
 
 	t.Run("RunTask failures should be noted as warnings", func(t *testing.T) {
-		service := ecstest{
-			func(*ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
-				return &ecs.ListTasksOutput{
-					NextToken: nil,
-					TaskArns:  []*string{},
-				}, nil
-			},
-			func(*ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
-				taskArn := "arn:test"
-				reason := "intentional\nfailure"
-				return &ecs.RunTaskOutput{
-					Failures: []*ecs.Failure{
-						&ecs.Failure{
-							Arn:    &taskArn,
-							Reason: &reason,
-						},
+		service := runTaskFunc(func(*ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
+			taskArn := "arn:test"
+			reason := "intentional\nfailure"
+			return &ecs.RunTaskOutput{
+				Failures: []*ecs.Failure{
+					&ecs.Failure{
+						Arn:    &taskArn,
+						Reason: &reason,
 					},
-					Tasks: []*ecs.Task{},
-				}, nil
-			},
-		}
+				},
+				Tasks: []*ecs.Task{},
+			}, nil
+		})
 
 		runner := NewEcsTaskRunner(service, "clustername")
 		result, err := runner.RunTask("taskname")
@@ -152,25 +185,17 @@ func TestEcsTaskRunner(t *testing.T) {
 	})
 
 	t.Run("RunTask without fail should be noted as success", func(t *testing.T) {
-		service := ecstest{
-			func(*ecs.ListTasksInput) (*ecs.ListTasksOutput, error) {
-				return &ecs.ListTasksOutput{
-					NextToken: nil,
-					TaskArns:  []*string{},
-				}, nil
-			},
-			func(i *ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
-				startedBy := *i.StartedBy
-				if startedBy != "c48ff9aade4a76b8a3ea9767be30800b" {
-					t.Fatalf("StartedBy was not md5sum of 'taskname' (%s)", startedBy)
-				}
+		service := runTaskFunc(func(i *ecs.RunTaskInput) (*ecs.RunTaskOutput, error) {
+			startedBy := *i.StartedBy
+			if startedBy != "c48ff9aade4a76b8a3ea9767be30800b" {
+				t.Fatalf("StartedBy was not md5sum of 'taskname' (%s)", startedBy)
+			}
 
-				return &ecs.RunTaskOutput{
-					Failures: []*ecs.Failure{},
-					Tasks:    []*ecs.Task{},
-				}, nil
-			},
-		}
+			return &ecs.RunTaskOutput{
+				Failures: []*ecs.Failure{},
+				Tasks:    []*ecs.Task{},
+			}, nil
+		})
 
 		runner := NewEcsTaskRunner(service, "clustername")
 		result, err := runner.RunTask("taskname")

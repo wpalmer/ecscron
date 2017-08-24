@@ -78,7 +78,7 @@ func (r *RetrySchedule) Tick(runner taskrunner.TaskRunner, at time.Time) (map[st
 		if _, ok := runstatus[task]; !ok {
 			r.tasks[task] = &retryTaskStatus{
 				attempts: 1,
-				ok:       newstatus.Ran,
+				ok:       newstatus.Ran || newstatus.Running,
 			}
 			runstatus[task] = newstatus
 		}
