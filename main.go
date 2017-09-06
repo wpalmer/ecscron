@@ -43,6 +43,13 @@ func main() {
 	var retryCount int64
 	var simulate bool
 	var verbosity int
+
+	var doDump bool
+	var dumpFrom string
+	var dumpFromTime time.Time
+	var dumpUntil string
+	var dumpUntilTime time.Time
+	var dumpFormat string
 	first := true
 
 	flag.StringVar(&timezone, "timezone", "UTC", "The TimeZone in which to evaluate cron expressions")
@@ -56,6 +63,11 @@ func main() {
 	flag.StringVar(&suffix, "suffix", "", "An optional suffix to add to all ECS Task names within the crontab")
 	flag.BoolVar(&simulate, "simulate", false, "When true, don't actually run anything, only print what would be run")
 	flag.IntVar(&verbosity, "debug", 0, "Debug level 0 = errors/warnings, 1 = run info, 2 = detail, 5 = status")
+
+	flag.BoolVar(&doDump, "dump", false, "Rather than running the cron, output a summary of the schedule")
+	flag.StringVar(&dumpFrom, "dump-from", "", "Output the schedule up starting from the specified time, in YYYY-MM-DD HH:mm:ss format")
+	flag.StringVar(&dumpUntil, "dump-until", "", "Output the schedule up until the specified time, in YYYY-MM-DD HH:mm:ss format")
+	flag.StringVar(&dumpFormat, "dump-format", "", "Output the schedule in the specified format. Currently the only supported format is 'json'")
 	flag.Parse()
 
 	location, err := time.LoadLocation(timezone)
@@ -64,7 +76,7 @@ func main() {
 	}
 
 	if async != "" {
-		prevTick, err = time.ParseInLocation("2006-05-04 15:02:01", async, location)
+		prevTick, err = time.ParseInLocation("2006-01-02 15:04:05", async, location)
 		if err != nil {
 			log.Fatalf("Failed to parse time of last run: %s", err)
 		}
@@ -119,6 +131,45 @@ func main() {
 		runner = tweak.NewTweakTaskRunner(runner, func(task string) string {
 			return fmt.Sprintf("%s%s%s", prefix, task, suffix)
 		})
+	}
+
+	if dumpFrom != "" {
+		doDump = true
+		dumpFromTime, err = time.ParseInLocation("2006-01-02 15:04:05", dumpFrom, location)
+		if err != nil {
+			log.Fatalf("Failed to parse time to dump from: %s", err)
+		}
+	} else {
+		dumpFromTime = time.Now()
+	}
+
+	if dumpUntil != "" {
+		doDump = true
+		dumpUntilTime, err = time.ParseInLocation("2006-01-02 15:04:05", dumpUntil, location)
+		if err != nil {
+			log.Fatalf("Failed to parse time to dump until: %s", err)
+		}
+	} else {
+		dumpUntilTime = dumpFromTime.Add(time.Hour * 24)
+	}
+
+	if dumpFormat == "" {
+		dumpFormat = "json"
+	} else {
+		doDump = true
+		if dumpFormat != "json" {
+			log.Fatalf("Unknown dump format: %s", dumpFormat)
+		}
+	}
+
+	if doDump {
+		_, err := schedule.DumpJson(os.Stdout, sched, dumpFromTime.Add(-1), dumpUntilTime)
+		if err != nil {
+			log.Fatalf("Failed to dump schedule: %s", err)
+		}
+
+		fmt.Printf("\n")
+		os.Exit(0)
 	}
 
 	if first {

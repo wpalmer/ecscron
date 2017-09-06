@@ -73,6 +73,14 @@ Arguments:
    * 1 = run info
    * 2 = detail
    * 5 = status
+ * `-dump`
+   Rather than running the cron, output a summary of the schedule.
+ * `-dump-format <format>`
+   Output the schedule in the specified format. Currently the only supported format is `json`.
+ * `-dump-from <YYYY-MM-DD HH:mm:ss>`
+   Output the schedule up starting from the specified time, in `YYYY-MM-DD HH:mm:ss` format.
+ * `-dump-until <YYYY-MM-DD HH:mm:ss>`
+   Output the schedule up until the specified time, in `YYYY-MM-DD HH:mm:ss` format.
  * `-prefix <string>`
    An optional prefix to add to all ECS Task names within the crontab.
    This may be useful for switching between environments or versions
