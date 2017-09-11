@@ -190,11 +190,11 @@ func main() {
 		prevTick = time.Now().In(location)
 	}
 
-	signals := make(chan os.Signal, 1)
+	signals := make(chan os.Signal, 2)
 	if doPause {
 		signals <- syscall.SIGUSR1
 	}
-	signal.Notify(signals, syscall.SIGUSR1)
+	signal.Notify(signals, syscall.SIGUSR1, syscall.SIGINT)
 
 	ticks := make(chan time.Time, 1)
 
@@ -220,29 +220,40 @@ func main() {
 			select {
 			case <-ticks:
 				ticked = true
-			case <-signals:
-				if doPause {
-					doPause = false
-					log.Printf("Pausing, send SIGUSR1 to resume...")
-				} else {
-					log.Printf("Received SIGUSR1, pausing...")
-				}
+			case oneSignal := <-signals:
+				switch oneSignal {
+				case syscall.SIGINT:
+					log.Fatalf("Received SIGINT, exiting...")
+				case syscall.SIGUSR1:
+					if doPause {
+						doPause = false
+						log.Printf("Pausing, send SIGUSR1 to resume...")
+					} else {
+						log.Printf("Received SIGUSR1, pausing...")
+					}
 
-				var maxPauseChannel <-chan time.Time
-				var maxPauseTimer *time.Timer
-				if maxPause != "" {
-					maxPauseTimer = time.NewTimer(maxPauseDuration)
-					maxPauseChannel = maxPauseTimer.C
-				} else {
-					maxPauseChannel = make(<-chan time.Time, 0)
-				}
+					var maxPauseChannel <-chan time.Time
+					var maxPauseTimer *time.Timer
+					if maxPause != "" {
+						maxPauseTimer = time.NewTimer(maxPauseDuration)
+						maxPauseChannel = maxPauseTimer.C
+					} else {
+						maxPauseChannel = make(<-chan time.Time, 0)
+					}
 
-				select {
-				case <-maxPauseChannel:
-					log.Printf("Maximum Pause Duration exceeded without receiving SIGUSR1, resuming...")
-				case <-signals:
-					maxPauseTimer.Stop()
-					log.Printf("Received SIGUSR1 while paused, resuming...")
+					select {
+					case <-maxPauseChannel:
+						log.Printf("Maximum Pause Duration exceeded without receiving SIGUSR1, resuming...")
+					case oneSignal := <-signals:
+						maxPauseTimer.Stop()
+
+						switch oneSignal {
+						case syscall.SIGINT:
+							log.Fatalf("Received SIGINT while paused, exiting...")
+						case syscall.SIGUSR1:
+							log.Printf("Received SIGUSR1 while paused, resuming...")
+						}
+					}
 				}
 			default:
 			}
