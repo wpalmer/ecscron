@@ -120,6 +120,32 @@ func TestRetrySchedule(t *testing.T) {
 		}
 	})
 
+	t.Run("Already-running should not result in retry", func(t *testing.T) {
+		innerSchedule := schedule.NewBasicSchedule()
+
+		failRunner := taskrunner.TaskRunnerFunc(func(task string) (*taskrunner.TaskStatus, error) {
+			return &taskrunner.TaskStatus{
+				Ran:      false,
+				Running:  true,
+				Error:    nil,
+				Warnings: []error{errors.New("intential already-running failure")},
+				Output:   "testOutputIntentionalAlreadyRunningFailure",
+			}, nil
+		})
+
+		testAfter := time.Date(2006, 1, 2, 15, 4, 30, 0, time.UTC)
+		testNext := testAfter.Add((time.Second * 30) + (time.Minute * 2))
+		innerSchedule.Set("test", schedule.NextTime(testNext))
+
+		outerSchedule := NewRetrySchedule(innerSchedule, -1)
+		_, _ = outerSchedule.Tick(failRunner, testNext)
+
+		result := outerSchedule.Next(testAfter)
+		if result.Equal(testAfter.Add(time.Second * 30)) {
+			t.Fatalf("Next after already-running tick did add retry to schedule")
+		}
+	})
+
 	t.Run("Failure should retry only maxRetries times", func(t *testing.T) {
 		innerSchedule := schedule.NewBasicSchedule()
 

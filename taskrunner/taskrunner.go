@@ -7,6 +7,9 @@ type TaskRunner interface {
 type TaskStatus struct {
 	Ran bool
 
+	// (optional) note that the task is known to be "already running", prior to this tick
+	Running bool
+
 	// Permanent or undefined / unknown error
 	Error error
 

@@ -138,7 +138,8 @@ func main() {
 		awsSession := session.Must(session.NewSession(awsConfig))
 		ecsService := ecs.New(awsSession)
 
-		runner = ecstaskrunner.NewEcsTaskRunner(ecsService, cluster)
+		innerRunner := ecstaskrunner.NewEcsTaskRunner(ecsService, cluster)
+		runner = ecstaskrunner.NewEcsSkipRunningTaskRunner(ecsService, cluster, innerRunner)
 	}
 
 	if prefix != "" || suffix != "" {
