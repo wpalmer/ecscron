@@ -99,3 +99,7 @@ Arguments:
    without editing the crontab.
  * `-timezone <identifier>`
    The TimeZone in which to evaluate cron expressions (default "UTC").
+
+Signals:
+
+SIGUSR1 is used to pause/resume ecscron
