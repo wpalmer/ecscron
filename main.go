@@ -34,6 +34,8 @@ type simulatedStatus struct {
 func main() {
 	var async string
 	var doPause bool
+	var maxPause string
+	var maxPauseDuration time.Duration
 	var prevTick time.Time
 	var nextTick time.Time
 	var timezone string
@@ -58,6 +60,7 @@ func main() {
 	flag.StringVar(&timezone, "timezone", "UTC", "The TimeZone in which to evaluate cron expressions")
 	flag.StringVar(&async, "async", "", "The \"last run\" of cron (to resume after interruption) in YYYY-MM-DD HH:mm:ss format")
 	flag.BoolVar(&doPause, "pause", false, "Start cron in a 'paused' state, awaiting SIGUSR1 to resume")
+	flag.StringVar(&maxPause, "max-pause", "", "Maximum amount of time cron may be paused, prior to resuming eg: '10m'")
 	flag.BoolVar(&doRetry, "retry", false, "When true, any failed run-task will be attempted again in the next iteration (same as -retry-count=-1)")
 	flag.Int64Var(&retryCount, "retry-count", 0, "The number of times to retry a failed run-task before giving up (-1 means forever)")
 	flag.StringVar(&cluster, "cluster", "", "The ECS Cluster on which to run tasks")
@@ -86,6 +89,13 @@ func main() {
 		}
 
 		first = false
+	}
+
+	if maxPause != "" {
+		maxPauseDuration, err = time.ParseDuration(maxPause)
+		if err != nil {
+			log.Fatalf("Failed to parse maximum pause duration: %s", err)
+		}
 	}
 
 	if doRetry && retryCount == int64(0) {
@@ -218,8 +228,22 @@ func main() {
 					log.Printf("Received SIGUSR1, pausing...")
 				}
 
-				<-signals
-				log.Printf("Received SIGUSR1 while paused, resuming...")
+				var maxPauseChannel <-chan time.Time
+				var maxPauseTimer *time.Timer
+				if maxPause != "" {
+					maxPauseTimer = time.NewTimer(maxPauseDuration)
+					maxPauseChannel = maxPauseTimer.C
+				} else {
+					maxPauseChannel = make(<-chan time.Time, 0)
+				}
+
+				select {
+				case <-maxPauseChannel:
+					log.Printf("Maximum Pause Duration exceeded without receiving SIGUSR1, resuming...")
+				case <-signals:
+					maxPauseTimer.Stop()
+					log.Printf("Received SIGUSR1 while paused, resuming...")
+				}
 			default:
 			}
 		}
