@@ -33,6 +33,7 @@ type simulatedStatus struct {
 
 func main() {
 	var async string
+	var doPause bool
 	var prevTick time.Time
 	var nextTick time.Time
 	var timezone string
@@ -56,6 +57,7 @@ func main() {
 
 	flag.StringVar(&timezone, "timezone", "UTC", "The TimeZone in which to evaluate cron expressions")
 	flag.StringVar(&async, "async", "", "The \"last run\" of cron (to resume after interruption) in YYYY-MM-DD HH:mm:ss format")
+	flag.BoolVar(&doPause, "pause", false, "Start cron in a 'paused' state, awaiting SIGUSR1 to resume")
 	flag.BoolVar(&doRetry, "retry", false, "When true, any failed run-task will be attempted again in the next iteration (same as -retry-count=-1)")
 	flag.Int64Var(&retryCount, "retry-count", 0, "The number of times to retry a failed run-task before giving up (-1 means forever)")
 	flag.StringVar(&cluster, "cluster", "", "The ECS Cluster on which to run tasks")
@@ -179,6 +181,9 @@ func main() {
 	}
 
 	signals := make(chan os.Signal, 1)
+	if doPause {
+		signals <- syscall.SIGUSR1
+	}
 	signal.Notify(signals, syscall.SIGUSR1)
 
 	ticks := make(chan time.Time, 1)
@@ -206,7 +211,13 @@ func main() {
 			case <-ticks:
 				ticked = true
 			case <-signals:
-				log.Printf("Received SIGUSR1, pausing...")
+				if doPause {
+					doPause = false
+					log.Printf("Pausing, send SIGUSR1 to resume...")
+				} else {
+					log.Printf("Received SIGUSR1, pausing...")
+				}
+
 				<-signals
 				log.Printf("Received SIGUSR1 while paused, resuming...")
 			default:
