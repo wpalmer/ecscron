@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -176,17 +178,39 @@ func main() {
 		prevTick = time.Now().In(location)
 	}
 
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGUSR1)
+
+	ticks := make(chan time.Time, 1)
+
 	for {
 		nextTick = sched.Next(prevTick)
 		pause := nextTick.Sub(time.Now().In(location))
 		if pause < time.Duration(0) {
 			log.Printf("Cron tasks running slowly: %0.2f seconds late entering tick scheduled for %v",
 				(pause * time.Duration(-1)).Seconds(), nextTick)
+			ticks <- nextTick
 		} else {
 			if verbosity >= DEBUG_STATUS {
 				log.Printf("Sleeping for %0.2f seconds", pause.Seconds())
 			}
-			time.Sleep(pause)
+			go func() {
+				time.Sleep(pause)
+				ticks <- nextTick
+			}()
+		}
+
+		ticked := false
+		for ticked == false {
+			select {
+			case <-ticks:
+				ticked = true
+			case <-signals:
+				log.Printf("Received SIGUSR1, pausing...")
+				<-signals
+				log.Printf("Received SIGUSR1 while paused, resuming...")
+			default:
+			}
 		}
 
 		prevTick = nextTick
