@@ -81,6 +81,8 @@ Arguments:
    Output the schedule up starting from the specified time, in `YYYY-MM-DD HH:mm:ss` format.
  * `-dump-until <YYYY-MM-DD HH:mm:ss>`
    Output the schedule up until the specified time, in `YYYY-MM-DD HH:mm:ss` format.
+ * `-pause`
+   Start cron in a 'paused' state, awaiting SIGUSR1 to resume.
  * `-prefix <string>`
    An optional prefix to add to all ECS Task names within the crontab.
    This may be useful for switching between environments or versions
