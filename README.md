@@ -81,6 +81,8 @@ Arguments:
    Output the schedule up starting from the specified time, in `YYYY-MM-DD HH:mm:ss` format.
  * `-dump-until <YYYY-MM-DD HH:mm:ss>`
    Output the schedule up until the specified time, in `YYYY-MM-DD HH:mm:ss` format.
+ * `-max-pause <duration>`
+   Maximum amount of time cron may be paused, prior to resuming eg: `300s`, `5m`.
  * `-pause`
    Start cron in a 'paused' state, awaiting SIGUSR1 to resume.
  * `-prefix <string>`
