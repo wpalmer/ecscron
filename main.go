@@ -256,7 +256,6 @@ func main() {
 						}
 					}
 				}
-			default:
 			}
 		}
 
